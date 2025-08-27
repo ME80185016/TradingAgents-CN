@@ -240,7 +240,16 @@ def render_sidebar():
 
         # 根据提供商显示不同的模型选项
         if llm_provider == "dashscope":
-            dashscope_options = ["qwen-turbo", "qwen-plus-latest", "qwen-max"]
+            dashscope_options = [
+                "qwen-turbo", 
+                "qwen-plus-latest", 
+                "qwen-max",
+                "qwen-long",
+                "qwen-vl-plus",
+                "qwen-vl-max",
+                "qwen-math-plus",
+                "qwen-coder-plus"
+            ]
 
             # 获取当前选择的索引
             current_index = 1  # 默认选择qwen-plus-latest
@@ -252,9 +261,14 @@ def render_sidebar():
                 options=dashscope_options,
                 index=current_index,
                 format_func=lambda x: {
-                    "qwen-turbo": "Turbo - 快速",
-                    "qwen-plus-latest": "Plus - 平衡",
-                    "qwen-max": "Max - 最强"
+                    "qwen-turbo": "Turbo - 快速响应",
+                    "qwen-plus-latest": "Plus - 平衡性能",
+                    "qwen-max": "Max - 最强性能",
+                    "qwen-long": "Long - 长文本处理",
+                    "qwen-vl-plus": "VL Plus - 视觉理解",
+                    "qwen-vl-max": "VL Max - 高级视觉",
+                    "qwen-math-plus": "Math Plus - 数学专用",
+                    "qwen-coder-plus": "Coder Plus - 代码专用"
                 }[x],
                 help="选择用于分析的阿里百炼模型",
                 key="dashscope_model_select"
@@ -303,7 +317,13 @@ def render_sidebar():
             save_model_selection(st.session_state.llm_provider, st.session_state.model_category, llm_model)
 
         elif llm_provider == "deepseek":
-            deepseek_options = ["deepseek-chat"]
+            deepseek_options = [
+                "deepseek-chat",
+                "deepseek-coder", 
+                "deepseek-reasoner",
+                "deepseek-r1",
+                "deepseek-r1-lite-preview"
+            ]
 
             # 获取当前选择的索引
             current_index = 0
@@ -315,7 +335,11 @@ def render_sidebar():
                 options=deepseek_options,
                 index=current_index,
                 format_func=lambda x: {
-                    "deepseek-chat": "DeepSeek Chat - 通用对话模型，适合股票分析"
+                    "deepseek-chat": "DeepSeek Chat - 通用对话模型，适合股票分析",
+                    "deepseek-coder": "DeepSeek Coder - 代码专用模型",
+                    "deepseek-reasoner": "DeepSeek Reasoner - 推理专用模型",
+                    "deepseek-r1": "DeepSeek R1 - 最新推理模型",
+                    "deepseek-r1-lite-preview": "DeepSeek R1 Lite - 轻量推理模型"
                 }[x],
                 help="选择用于分析的DeepSeek模型",
                 key="deepseek_model_select"
@@ -340,7 +364,11 @@ def render_sidebar():
                 "gemini-2.0-flash",
                 "gemini-2.5-flash-lite-preview-06-17", 
                 "gemini-1.5-pro", 
-                "gemini-1.5-flash"
+                "gemini-1.5-flash",
+                "gemini-1.5-pro-latest",
+                "gemini-1.5-flash-latest",
+                "gemini-pro",
+                "gemini-pro-vision"
             ]
 
             # 获取当前选择的索引
@@ -361,7 +389,11 @@ def render_sidebar():
                     "gemini-2.5-flash-002": "Gemini 2.5 Flash-002 - ⚡ 优化快速版",
                     "gemini-2.0-flash": "Gemini 2.0 Flash - 🚀 推荐使用 (1.87s)",
                     "gemini-1.5-pro": "Gemini 1.5 Pro - ⚖️ 强大性能 (2.25s)",
-                    "gemini-1.5-flash": "Gemini 1.5 Flash - 💨 快速响应 (2.87s)"
+                    "gemini-1.5-flash": "Gemini 1.5 Flash - 💨 快速响应 (2.87s)",
+                    "gemini-1.5-pro-latest": "Gemini 1.5 Pro Latest - 最新稳定版",
+                    "gemini-1.5-flash-latest": "Gemini 1.5 Flash Latest - 最新快速版",
+                    "gemini-pro": "Gemini Pro - 经典版本",
+                    "gemini-pro-vision": "Gemini Pro Vision - 视觉理解专用"
                 }[x],
                 help="选择用于分析的Google Gemini模型",
                 key="google_model_select"
@@ -377,11 +409,16 @@ def render_sidebar():
             save_model_selection(st.session_state.llm_provider, st.session_state.model_category, llm_model)
         elif llm_provider == "openai":
              openai_options = [
+                 "o1",
+                 "o1-pro", 
+                 "o1-mini",
                  "gpt-4o",
                  "gpt-4o-mini",
                  "gpt-4-turbo",
                  "gpt-4",
-                 "gpt-3.5-turbo"
+                 "gpt-3.5-turbo",
+                 "gpt-4o-2024-11-20",
+                 "gpt-4o-2024-08-06"
              ]
  
              # 获取当前选择的索引
@@ -394,11 +431,16 @@ def render_sidebar():
                  options=openai_options,
                  index=current_index,
                  format_func=lambda x: {
+                     "o1": "o1 - 🧠 最新推理模型",
+                     "o1-pro": "o1 Pro - 🚀 专业推理模型",
+                     "o1-mini": "o1 Mini - ⚡ 轻量推理模型",
                      "gpt-4o": "GPT-4o - 最新旗舰模型",
                      "gpt-4o-mini": "GPT-4o Mini - 轻量旗舰",
                      "gpt-4-turbo": "GPT-4 Turbo - 强化版",
                      "gpt-4": "GPT-4 - 经典版",
-                     "gpt-3.5-turbo": "GPT-3.5 Turbo - 经济版"
+                     "gpt-3.5-turbo": "GPT-3.5 Turbo - 经济版",
+                     "gpt-4o-2024-11-20": "GPT-4o (2024-11-20) - 最新版本",
+                     "gpt-4o-2024-08-06": "GPT-4o (2024-08-06) - 稳定版"
                  }[x],
                  help="选择用于分析的OpenAI模型",
                  key="openai_model_select"
