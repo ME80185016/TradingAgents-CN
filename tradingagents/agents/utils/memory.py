@@ -1,5 +1,3 @@
-import chromadb
-from chromadb.config import Settings
 from openai import OpenAI
 import dashscope
 from dashscope import TextEmbedding
@@ -11,6 +9,26 @@ from typing import Dict, Optional
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
 logger = get_logger("agents.utils.memory")
+
+# 条件导入ChromaDB - 只有在MEMORY_ENABLED为true时才导入
+try:
+    memory_enabled = os.getenv('MEMORY_ENABLED', 'true').lower() in ['true', '1', 'yes', 'on']
+    if memory_enabled:
+        import chromadb
+        from chromadb.config import Settings
+        logger.info("📚 [ChromaDB] 模块已导入")
+    else:
+        chromadb = None
+        Settings = None
+        logger.info("📚 [ChromaDB] 内存功能已禁用，跳过导入")
+except ImportError as e:
+    chromadb = None
+    Settings = None
+    logger.warning(f"⚠️ [ChromaDB] 导入失败: {e}，内存功能将被禁用")
+except Exception as e:
+    chromadb = None
+    Settings = None
+    logger.warning(f"⚠️ [ChromaDB] 导入异常: {e}，内存功能将被禁用")
 
 
 class ChromaDBManager:
@@ -31,24 +49,27 @@ class ChromaDBManager:
 
     def __init__(self):
         if not self._initialized:
+            # 检查ChromaDB是否可用
+            if chromadb is None:
+                logger.warning("⚠️ [ChromaDB] ChromaDB模块不可用，内存功能已禁用")
+                self._client = None
+                self._initialized = True
+                return
+            
             try:
                 # 自动检测操作系统版本并使用最优配置
                 import platform
                 system = platform.system()
                 
                 if system == "Windows":
-                    # 使用改进的Windows 11检测
-                    from .chromadb_win11_config import is_windows_11
-                    if is_windows_11():
-                        # Windows 11 或更新版本，使用优化配置
-                        from .chromadb_win11_config import get_win11_chromadb_client
-                        self._client = get_win11_chromadb_client()
-                        logger.info(f"📚 [ChromaDB] Windows 11优化配置初始化完成 (构建号: {platform.version()})")
-                    else:
-                        # Windows 10 或更老版本，使用兼容配置
-                        from .chromadb_win10_config import get_win10_chromadb_client
-                        self._client = get_win10_chromadb_client()
-                        logger.info(f"📚 [ChromaDB] Windows 10兼容配置初始化完成")
+                    # Windows系统，使用标准配置
+                    settings = Settings(
+                        allow_reset=True,
+                        anonymized_telemetry=False,
+                        is_persistent=False
+                    )
+                    self._client = chromadb.Client(settings)
+                    logger.info(f"📚 [ChromaDB] Windows标准配置初始化完成")
                 else:
                     # 非Windows系统，使用标准配置
                     settings = Settings(
@@ -64,21 +85,37 @@ class ChromaDBManager:
                 logger.error(f"❌ [ChromaDB] 初始化失败: {e}")
                 # 使用最简单的配置作为备用
                 try:
-                    settings = Settings(
-                        allow_reset=True,
-                        anonymized_telemetry=False,  # 关键：禁用遥测
-                        is_persistent=False
-                    )
-                    self._client = chromadb.Client(settings)
-                    logger.info(f"📚 [ChromaDB] 使用备用配置初始化完成")
+                    if Settings is not None:
+                        settings = Settings(
+                            allow_reset=True,
+                            anonymized_telemetry=False,  # 关键：禁用遥测
+                            is_persistent=False
+                        )
+                        self._client = chromadb.Client(settings)
+                        logger.info(f"📚 [ChromaDB] 使用备用配置初始化完成")
+                    else:
+                        self._client = None
+                        logger.warning(f"⚠️ [ChromaDB] Settings不可用，内存功能已禁用")
                 except Exception as backup_error:
                     # 最后的备用方案
-                    self._client = chromadb.Client()
-                    logger.warning(f"⚠️ [ChromaDB] 使用最简配置初始化: {backup_error}")
+                    try:
+                        if chromadb is not None:
+                            self._client = chromadb.Client()
+                            logger.warning(f"⚠️ [ChromaDB] 使用最简配置初始化: {backup_error}")
+                        else:
+                            self._client = None
+                            logger.warning(f"⚠️ [ChromaDB] 无法初始化，内存功能已禁用")
+                    except Exception:
+                        self._client = None
+                        logger.warning(f"⚠️ [ChromaDB] 彻底无法初始化，内存功能已禁用")
                 self._initialized = True
 
     def get_or_create_collection(self, name: str):
         """线程安全地获取或创建集合"""
+        if self._client is None:
+            logger.warning(f"⚠️ [ChromaDB] 客户端不可用，无法创建集合: {name}")
+            return None
+            
         with self._lock:
             if name in self._collections:
                 logger.info(f"📚 [ChromaDB] 使用缓存集合: {name}")
@@ -100,7 +137,7 @@ class ChromaDBManager:
                         logger.info(f"📚 [ChromaDB] 并发创建后获取集合: {name}")
                     except Exception as final_error:
                         logger.error(f"❌ [ChromaDB] 集合操作失败: {name}, 错误: {final_error}")
-                        raise final_error
+                        return None
 
             # 缓存集合
             self._collections[name] = collection
@@ -293,6 +330,14 @@ class FinancialSituationMemory:
         # 使用单例ChromaDB管理器
         self.chroma_manager = ChromaDBManager()
         self.situation_collection = self.chroma_manager.get_or_create_collection(name)
+        
+        # 检查ChromaDB是否可用
+        if self.situation_collection is None:
+            logger.warning(f"⚠️ ChromaDB集合创建失败，记忆功能将被禁用: {name}")
+            self.memory_enabled = False
+        else:
+            self.memory_enabled = True
+            logger.info(f"📚 ChromaDB集合已就绪: {name}")
 
     def _smart_text_truncation(self, text, max_length=8192):
         """智能文本截断，保持语义完整性和缓存兼容性"""
@@ -541,6 +586,11 @@ class FinancialSituationMemory:
 
     def add_situations(self, situations_and_advice):
         """Add financial situations and their corresponding advice. Parameter is a list of tuples (situation, rec)"""
+        
+        # 检查内存功能是否可用
+        if not getattr(self, 'memory_enabled', False) or self.situation_collection is None:
+            logger.debug(f"⚠️ 内存功能已禁用，跳过添加情况")
+            return
 
         situations = []
         advice = []
@@ -564,6 +614,11 @@ class FinancialSituationMemory:
 
     def get_memories(self, current_situation, n_matches=1):
         """Find matching recommendations using embeddings with smart truncation handling"""
+        
+        # 检查内存功能是否可用
+        if not getattr(self, 'memory_enabled', False) or self.situation_collection is None:
+            logger.debug(f"⚠️ 内存功能已禁用，返回空结果")
+            return []
         
         # 获取当前情况的embedding
         query_embedding = self.get_embedding(current_situation)
@@ -625,8 +680,9 @@ class FinancialSituationMemory:
     def get_cache_info(self):
         """获取缓存相关信息，用于调试和监控"""
         info = {
-            'collection_count': self.situation_collection.count(),
+            'collection_count': self.situation_collection.count() if getattr(self, 'memory_enabled', False) and self.situation_collection else 0,
             'client_status': 'enabled' if self.client != "DISABLED" else 'disabled',
+            'memory_enabled': getattr(self, 'memory_enabled', False),
             'embedding_model': self.embedding,
             'provider': self.llm_provider
         }
