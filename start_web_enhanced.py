@@ -150,13 +150,15 @@ def main():
         sys.executable, "-m", "streamlit", "run",
         str(app_file),
         "--server.port", "8501",
-        "--server.address", "localhost", 
+        "--server.address", "0.0.0.0", 
         "--browser.gatherUsageStats", "false",
         "--server.fileWatcherType", "none"
     ]
     
     print("\n🌐 启动Web应用...")
-    print("📱 浏览器将自动打开 http://localhost:8501")
+    print("📱 可以通过以下地址访问:")
+    print("   - 本地访问: http://localhost:8501")
+    print("   - 内网访问: http://10.1.29.13:8501")
     print("⏹️  按 Ctrl+C 停止应用")
     print("=" * 50)
     

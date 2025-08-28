@@ -1,31 +1,35 @@
 [server]
-# 服务器配置
+# 设置服务器地址为0.0.0.0，允许通过内网IP访问
+address = "0.0.0.0"
 port = 8501
-address = "0.0.0.0"  # Docker环境需要监听所有接口
-headless = true      # Docker环境无头模式
-enableCORS = false
-enableXsrfProtection = false
 
-# 文件监控配置 - 解决Windows下的文件锁定问题
+# 禁用浏览器自动打开
+headless = true
+
+# 禁用使用统计收集
+gatherUsageStats = false
+
+# 设置文件监视器类型（减少资源占用）
 fileWatcherType = "none"
+
+# 禁用自动重新运行
 runOnSave = false
 
 [browser]
-# 浏览器配置
+# 禁用使用统计收集
 gatherUsageStats = false
 
-[logger]
-# 日志配置
-level = "info"
-
-[global]
-# 全局配置
-developmentMode = false
+# 设置服务器地址显示
+serverAddress = "0.0.0.0"
+serverPort = 8501
 
 [theme]
-# 主题配置
-base = "light"
-primaryColor = "#1f77b4"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f0f2f6"
-textColor = "#262730"
+# 可选：设置主题颜色
+# primaryColor = "#FF6B6B"
+# backgroundColor = "#FFFFFF"
+# secondaryBackgroundColor = "#F0F2F6"
+# textColor = "#262730"
+
+[logger]
+# 设置日志级别
+level = "info"
