@@ -570,8 +570,12 @@ def main():
             st.info("请确保已安装所有依赖包")
         return
     elif page == "📈 历史记录":
-        st.header("📈 历史记录")
-        st.info("历史记录功能开发中...")
+        try:
+            from modules.analysis_history import render_analysis_history
+            render_analysis_history()
+        except ImportError as e:
+            st.error(f"历史记录模块加载失败: {e}")
+            st.info("请确保已安装所有依赖包")
         return
     elif page == "🔧 系统状态":
         st.header("🔧 系统状态")

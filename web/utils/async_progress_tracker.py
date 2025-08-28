@@ -486,15 +486,27 @@ class AsyncProgressTracker:
                 key = f"progress:{self.analysis_id}"
                 safe_data = safe_serialize(self.progress_data)
                 data_json = json.dumps(safe_data, ensure_ascii=False)
-                self.redis_client.setex(key, 3600, data_json)  # 1小时过期
+                # 设置7天过期时间，避免历史记录快速丢失
+                self.redis_client.setex(key, 7*24*3600, data_json)  # 7天过期
 
                 logger.info(f"📊 [Redis写入] {self.analysis_id} -> {status} | {current_step_name} | {progress_pct:.1f}%")
                 logger.debug(f"📊 [Redis详情] 键: {key}, 数据大小: {len(data_json)} 字节")
             else:
                 # 保存到文件（安全序列化）
                 safe_data = safe_serialize(self.progress_data)
+                # 确保目录存在
+                os.makedirs(os.path.dirname(self.progress_file), exist_ok=True)
                 with open(self.progress_file, 'w', encoding='utf-8') as f:
                     json.dump(safe_data, f, ensure_ascii=False, indent=2)
+                
+                # 额外保存一份带时间戳的备份文件
+                backup_file = f"./data/backup_progress_{self.analysis_id}_{int(time.time())}.json"
+                try:
+                    with open(backup_file, 'w', encoding='utf-8') as f:
+                        json.dump(safe_data, f, ensure_ascii=False, indent=2)
+                    logger.debug(f"📊 [备份] 创建备份文件: {backup_file}")
+                except Exception as backup_e:
+                    logger.warning(f"📊 [备份] 创建备份文件失败: {backup_e}")
 
                 logger.info(f"📊 [文件写入] {self.analysis_id} -> {status} | {current_step_name} | {progress_pct:.1f}%")
                 logger.debug(f"📊 [文件详情] 路径: {self.progress_file}")
@@ -718,4 +730,202 @@ def get_latest_analysis_id() -> Optional[str]:
         return None
     except Exception as e:
         logger.error(f"📊 [恢复分析] 获取最新分析ID失败: {e}")
+        return None
+
+
+def get_all_analysis_history(limit: int = 50) -> List[Dict[str, Any]]:
+    """获取所有历史分析记录"""
+    try:
+        history_records = []
+        
+        # 检查REDIS_ENABLED环境变量
+        redis_enabled = os.getenv('REDIS_ENABLED', 'false').lower() == 'true'
+
+        # 如果Redis启用，先从Redis获取
+        if redis_enabled:
+            try:
+                import redis
+
+                # 从环境变量获取Redis配置
+                redis_host = os.getenv('REDIS_HOST', 'localhost')
+                redis_port = int(os.getenv('REDIS_PORT', 6379))
+                redis_password = os.getenv('REDIS_PASSWORD', None)
+                redis_db = int(os.getenv('REDIS_DB', 0))
+
+                # 创建Redis连接
+                if redis_password:
+                    redis_client = redis.Redis(
+                        host=redis_host,
+                        port=redis_port,
+                        password=redis_password,
+                        db=redis_db,
+                        decode_responses=True
+                    )
+                else:
+                    redis_client = redis.Redis(
+                        host=redis_host,
+                        port=redis_port,
+                        db=redis_db,
+                        decode_responses=True
+                    )
+
+                # 获取所有progress键
+                keys = redis_client.keys("progress:*")
+                
+                for key in keys:
+                    try:
+                        data = redis_client.get(key)
+                        if data:
+                            progress_data = json.loads(data)
+                            # 从键名中提取analysis_id
+                            analysis_id = key.replace('progress:', '')
+                            
+                            # 提取关键信息
+                            record = extract_analysis_summary(progress_data, analysis_id)
+                            if record:
+                                history_records.append(record)
+                    except Exception as e:
+                        logger.debug(f"📊 [历史记录] Redis键解析失败: {key}, 错误: {e}")
+                        continue
+
+                logger.info(f"📊 [历史记录] 从Redis获取到 {len(history_records)} 条记录")
+
+            except Exception as e:
+                logger.debug(f"📊 [历史记录] Redis获取失败: {e}")
+
+        # 从文件获取记录（补充或作为主要数据源）
+        try:
+            import glob
+            
+            data_dir = "./data"
+            if os.path.exists(data_dir):
+                progress_files = glob.glob(os.path.join(data_dir, "progress_*.json"))
+                
+                for file_path in progress_files:
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            progress_data = json.load(f)
+                        
+                        # 从文件名提取analysis_id
+                        filename = os.path.basename(file_path)
+                        analysis_id = filename.replace('progress_', '').replace('.json', '')
+                        
+                        # 避免重复（如果已经从Redis获取过）
+                        existing_ids = {record['analysis_id'] for record in history_records}
+                        if analysis_id not in existing_ids:
+                            record = extract_analysis_summary(progress_data, analysis_id)
+                            if record:
+                                history_records.append(record)
+                                
+                    except Exception as e:
+                        logger.debug(f"📊 [历史记录] 文件解析失败: {file_path}, 错误: {e}")
+                        continue
+
+                logger.info(f"📊 [历史记录] 从文件获取到额外 {len(history_records) - len([r for r in history_records if 'source' in r and r['source'] == 'redis'])} 条记录")
+
+        except Exception as e:
+            logger.debug(f"📊 [历史记录] 文件获取失败: {e}")
+
+        # 按时间排序（最新的在前面）
+        history_records.sort(key=lambda x: x.get('last_update', 0), reverse=True)
+        
+        # 限制返回数量
+        if limit and len(history_records) > limit:
+            history_records = history_records[:limit]
+        
+        logger.info(f"📊 [历史记录] 最终返回 {len(history_records)} 条历史记录")
+        return history_records
+
+    except Exception as e:
+        logger.error(f"📊 [历史记录] 获取历史记录失败: {e}")
+        return []
+
+
+def extract_analysis_summary(progress_data: Dict[str, Any], analysis_id: str) -> Optional[Dict[str, Any]]:
+    """从进度数据中提取分析摘要信息"""
+    try:
+        # 基本信息
+        status = progress_data.get('status', 'unknown')
+        last_update = progress_data.get('last_update', 0)
+        start_time = progress_data.get('start_time', last_update)
+        progress_percentage = progress_data.get('progress_percentage', 0)
+        
+        # 尝试获取股票信息
+        stock_symbol = None
+        market_type = None
+        analysts = []
+        research_depth = None
+        
+        # 从raw_results获取股票信息
+        raw_results = progress_data.get('raw_results', {})
+        if isinstance(raw_results, dict):
+            stock_symbol = raw_results.get('stock_symbol')
+            market_type = raw_results.get('market_type', '未知')
+            analysts = raw_results.get('analysts', [])
+            research_depth = raw_results.get('research_depth')
+        
+        # 如果raw_results中没有，尝试从分析ID中提取
+        if not stock_symbol and analysis_id:
+            # 分析ID格式通常包含股票代码，尝试提取
+            import re
+            # 匹配常见股票代码格式
+            stock_pattern = r'([A-Z]{1,5}|\d{6}|\d{3,4}\.HK)'
+            match = re.search(stock_pattern, analysis_id.upper())
+            if match:
+                stock_symbol = match.group(1)
+        
+        # 构建记录
+        record = {
+            'analysis_id': analysis_id,
+            'stock_symbol': stock_symbol or '未知股票',
+            'market_type': market_type,
+            'status': status,
+            'progress_percentage': round(progress_percentage, 1),
+            'start_time': start_time,
+            'last_update': last_update,
+            'analysts': analysts,
+            'research_depth': research_depth,
+            'duration': last_update - start_time if start_time else 0,
+            'has_results': bool(raw_results and progress_data.get('status') == 'completed')
+        }
+        
+        # 格式化时间显示
+        import datetime
+        if last_update:
+            try:
+                record['last_update_formatted'] = datetime.datetime.fromtimestamp(last_update).strftime('%Y-%m-%d %H:%M:%S')
+                record['start_time_formatted'] = datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S') if start_time else '未知'
+            except:
+                record['last_update_formatted'] = '时间格式错误'
+                record['start_time_formatted'] = '时间格式错误'
+        else:
+            record['last_update_formatted'] = '未知时间'
+            record['start_time_formatted'] = '未知时间'
+        
+        # 格式化持续时间
+        if record['duration'] > 0:
+            duration_str = format_time(record['duration'])
+            record['duration_formatted'] = duration_str
+        else:
+            record['duration_formatted'] = '未知'
+        
+        # 状态图标和颜色
+        status_config = {
+            'completed': {'icon': '✅', 'color': 'green', 'text': '已完成'},
+            'running': {'icon': '🔄', 'color': 'blue', 'text': '运行中'},
+            'failed': {'icon': '❌', 'color': 'red', 'text': '失败'},
+            'unknown': {'icon': '❓', 'color': 'gray', 'text': '未知'}
+        }
+        
+        config = status_config.get(status, status_config['unknown'])
+        record.update({
+            'status_icon': config['icon'],
+            'status_color': config['color'],
+            'status_text': config['text']
+        })
+        
+        return record
+
+    except Exception as e:
+        logger.debug(f"📊 [历史记录] 解析分析摘要失败: {analysis_id}, 错误: {e}")
         return None
