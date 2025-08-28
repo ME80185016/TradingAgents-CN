@@ -21,13 +21,21 @@ class AsyncProgressDisplay:
         self.analysis_id = analysis_id
         self.refresh_interval = refresh_interval
         
-        # 创建显示组件
-        with self.container:
-            self.progress_bar = st.progress(0)
-            self.status_text = st.empty()
-            self.step_info = st.empty()
-            self.time_info = st.empty()
-            self.refresh_button = st.empty()
+        # 添加DOM操作锁，防止重复操作
+        self.dom_lock = False
+        
+        # 创建显示组件时使用锁保护
+        if not self.dom_lock:
+            self.dom_lock = True
+            try:
+                with self.container:
+                    self.progress_bar = st.progress(0)
+                    self.status_text = st.empty()
+                    self.step_info = st.empty()
+                    self.time_info = st.empty()
+                    self.refresh_button = st.empty()
+            finally:
+                self.dom_lock = False
         
         # 初始化状态
         self.last_update = 0
@@ -39,6 +47,10 @@ class AsyncProgressDisplay:
         """更新显示，返回是否需要继续刷新"""
         current_time = time.time()
         
+        # 如果DOM操作正在进行，跳过此次更新
+        if self.dom_lock:
+            return not self.is_completed
+        
         # 检查是否需要刷新
         if current_time - self.last_update < self.refresh_interval and not self.is_completed:
             return not self.is_completed
@@ -47,7 +59,10 @@ class AsyncProgressDisplay:
         progress_data = get_progress_by_id(self.analysis_id)
         
         if not progress_data:
-            self.status_text.error("❌ 无法获取分析进度，请检查分析是否正在运行")
+            try:
+                self.status_text.error("❌ 无法获取分析进度，请检查分析是否正在运行")
+            except Exception as e:
+                logger.error(f"📊 [DOM错误] 状态文本更新失败: {e}")
             return False
         
         # 更新显示
@@ -145,19 +160,29 @@ class AsyncProgressDisplay:
             else:
                 self.time_info.info(f"⏱️ **已用时间**: {format_time(real_elapsed_time)} | **预计剩余**: {format_time(remaining_time)}")
             
-            # 刷新按钮（仅在运行时显示）
-            if status == 'running':
-                with self.refresh_button:
-                    col1, col2, col3 = st.columns([1, 1, 1])
-                    with col2:
-                        if st.button("🔄 手动刷新", key=f"refresh_{self.analysis_id}"):
-                            st.rerun()
-            else:
-                self.refresh_button.empty()
+            # 刷新按钮（仅在运行时显示）- 添加异常保护
+            try:
+                if status == 'running':
+                    with self.refresh_button:
+                        col1, col2, col3 = st.columns([1, 1, 1])
+                        with col2:
+                            if st.button("🔄 手动刷新", key=f"refresh_{self.analysis_id}"):
+                                st.rerun()
+                else:
+                    self.refresh_button.empty()
+            except Exception as e:
+                logger.warning(f"📊 [DOM保护] 刷新按钮更新跳过: {e}")
                 
         except Exception as e:
             logger.error(f"📊 [异步显示] 渲染失败: {e}")
-            self.status_text.error(f"❌ 显示更新失败: {str(e)}")
+            try:
+                self.status_text.error(f"❌ 显示更新失败: {str(e)}")
+            except:
+                # 如果连错误显示都失败，只记录日志
+                logger.error(f"📊 [DOM严重错误] 无法显示错误信息: {e}")
+        finally:
+            # 确保释放DOM锁
+            self.dom_lock = False
 
 def create_async_progress_display(container, analysis_id: str, refresh_interval: float = 1.0) -> AsyncProgressDisplay:
     """创建异步进度显示组件"""
@@ -588,22 +613,44 @@ def display_static_progress_with_controls(analysis_id: str, show_refresh_control
     # 1. 需要显示刷新控件 AND
     # 2. (分析正在运行 OR 分析刚开始还没有状态)
     if show_refresh_controls and (status == 'running' or status == 'initializing'):
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            if st.button("🔄 刷新进度", key=f"refresh_unified_{analysis_id}"):
-                st.rerun()
-        with col2:
-            auto_refresh_key = f"auto_refresh_unified_{analysis_id}"
-            # 获取默认值，如果是新分析则默认为True
-            default_value = st.session_state.get(auto_refresh_key, True)  # 默认为True
-            auto_refresh = st.checkbox("🔄 自动刷新", value=default_value, key=auto_refresh_key)
-            if auto_refresh and status == 'running':  # 只在运行时自动刷新
-                import time
-                time.sleep(3)  # 等待3秒
-                st.rerun()
-            elif auto_refresh and status in ['completed', 'failed']:
-                # 分析完成后自动关闭自动刷新
-                st.session_state[auto_refresh_key] = False
+        # 添加DOM操作保护和快速分析模式保护
+        try:
+            # 防止重复刷新的保护机制
+            refresh_protection_key = f"refresh_protection_{analysis_id}"
+            last_refresh_time = st.session_state.get(refresh_protection_key, 0)
+            current_time = time.time()
+            
+            # 快速分析模式（研究深度为1）增加保护间隔
+            research_depth = progress_data.get('steps', [{}])[0].get('research_depth', 2) if progress_data.get('steps') else 2
+            protection_interval = 5 if research_depth == 1 else 2
+            
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if st.button("🔄 刷新进度", key=f"refresh_unified_{analysis_id}"):
+                    # 清除刷新保护，允许立即刷新
+                    if refresh_protection_key in st.session_state:
+                        del st.session_state[refresh_protection_key]
+                    st.rerun()
+            with col2:
+                auto_refresh_key = f"auto_refresh_unified_{analysis_id}"
+                # 获取默认值，如果是新分析则默认为True，但快速分析模式降低刷新频率
+                default_value = st.session_state.get(auto_refresh_key, True)
+                auto_refresh = st.checkbox("🔄 自动刷新", value=default_value, key=auto_refresh_key)
+                
+                if auto_refresh and status == 'running':
+                    # 检查刷新保护间隔
+                    if current_time - last_refresh_time >= protection_interval:
+                        # 更新刷新时间戳
+                        st.session_state[refresh_protection_key] = current_time
+                        # 针对快速分析模式，增加刷新间隔
+                        sleep_time = 6 if research_depth == 1 else 3
+                        time.sleep(sleep_time)
+                        st.rerun()
+                elif auto_refresh and status in ['completed', 'failed']:
+                    # 分析完成后自动关闭自动刷新
+                    st.session_state[auto_refresh_key] = False
+        except Exception as e:
+            logger.warning(f"📊 [DOM保护] 刷新控件更新失败，跳过: {e}")
 
     # 不需要清理session state，因为我们通过参数控制显示
 

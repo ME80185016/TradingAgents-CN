@@ -773,61 +773,26 @@ def main():
                     f"auto_refresh_static_{analysis_id}",
                     f"auto_refresh_streamlit_{analysis_id}"
                 ]
+                # 对于快速分析模式（研究深度为1），默认关闭自动刷新防止DOM冲突
+                default_auto_refresh = False if form_data['research_depth'] == 1 else True
                 for key in auto_refresh_keys:
-                    st.session_state[key] = True
+                    st.session_state[key] = default_auto_refresh
+                
+                # 如果是快速分析模式，显示特别提示
+                if form_data['research_depth'] == 1:
+                    st.info("""
+                    🚀 **快速分析模式**：为防止页面冲突，已自动关闭自动刷新。
+                    
+                    📋 **查看进度：**
+                    请手动点击“🔄 刷新进度”按钮查看最新进度
+                    """)
+                else:
+                    st.info("""
+                    ⏱️ 页面将在6秒后自动刷新...
 
-                # 在后台线程中运行分析（立即启动，不等待倒计时）
-                import threading
-
-                def run_analysis_in_background():
-                    try:
-                        results = run_stock_analysis(
-                            stock_symbol=form_data['stock_symbol'],
-                            analysis_date=form_data['analysis_date'],
-                            analysts=form_data['analysts'],
-                            research_depth=form_data['research_depth'],
-                            llm_provider=config['llm_provider'],
-                            market_type=form_data.get('market_type', '美股'),
-                            llm_model=config['llm_model'],
-                            progress_callback=progress_callback
-                        )
-
-                        # 标记分析完成并保存结果（不访问session state）
-                        async_tracker.mark_completed("✅ 分析成功完成！", results=results)
-
-                        logger.info(f"✅ [分析完成] 股票分析成功完成: {analysis_id}")
-
-                    except Exception as e:
-                        # 标记分析失败（不访问session state）
-                        async_tracker.mark_failed(str(e))
-                        logger.error(f"❌ [分析失败] {analysis_id}: {e}")
-
-                    finally:
-                        # 分析结束后注销线程
-                        from utils.thread_tracker import unregister_analysis_thread
-                        unregister_analysis_thread(analysis_id)
-                        logger.info(f"🧵 [线程清理] 分析线程已注销: {analysis_id}")
-
-                # 启动后台分析线程
-                analysis_thread = threading.Thread(target=run_analysis_in_background)
-                analysis_thread.daemon = True  # 设置为守护线程，这样主程序退出时线程也会退出
-                analysis_thread.start()
-
-                # 注册线程到跟踪器
-                from utils.thread_tracker import register_analysis_thread
-                register_analysis_thread(analysis_id, analysis_thread)
-
-                logger.info(f"🧵 [后台分析] 分析线程已启动: {analysis_id}")
-
-                # 分析已在后台线程中启动，显示启动信息并刷新页面
-                st.success("🚀 分析已启动！正在后台运行...")
-
-                # 显示启动信息
-                st.info("⏱️ 页面将自动刷新显示分析进度...")
-
-                # 等待2秒让用户看到启动信息，然后刷新页面
-                time.sleep(2)
-                st.rerun()
+                    📋 **查看分析进度：**
+                    刷新后请向下滚动到 "📊 股票分析" 部分查看实时进度
+                    """)
 
         # 2. 股票分析区域（只有在有分析ID时才显示）
         current_analysis_id = st.session_state.get('current_analysis_id')

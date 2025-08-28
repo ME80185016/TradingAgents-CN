@@ -227,18 +227,23 @@ def run_stock_analysis(stock_symbol, analysis_date, analysts, research_depth, ll
         config["deep_think_llm"] = llm_model
         config["quick_think_llm"] = llm_model
         # 根据研究深度调整配置
-        if research_depth == 1:  # 1级 - 快速分析
-            config["max_debate_rounds"] = 1
-            config["max_risk_discuss_rounds"] = 1
-            # 保持内存功能启用，因为内存操作开销很小但能显著提升分析质量
-            config["memory_enabled"] = True
+        if research_depth == 1:  # 1级 - 快速分析（特别优化防止DOM冲突）
+            config["max_debate_rounds"] = 0  # 完全关闭辩论，减少复杂度
+            config["max_risk_discuss_rounds"] = 0  # 完全关闭风险讨论
+            # 关闭内存功能减少复杂操作
+            config["memory_enabled"] = False
+            # 添加快速模式标志
+            config["fast_mode"] = True
+            config["reduce_tool_calls"] = True
+            config["enable_news_analysis"] = False  # 关闭新闻分析减少网络调用
+            config["enable_social_media_analysis"] = False  # 关闭社交媒体分析
 
             # 统一使用在线工具，避免离线工具的各种问题
             config["online_tools"] = True  # 所有市场都使用统一工具
-            logger.info(f"🔧 [快速分析] {market_type}使用统一工具，确保数据源正确和稳定性")
+            logger.info(f"🔧 [快速分析] {market_type}使用统一工具，确保数据源正确和稳定性，关闭辩论和复杂功能防止DOM冲突")
             if llm_provider == "dashscope":
                 config["quick_think_llm"] = "qwen-turbo"  # 使用最快模型
-                config["deep_think_llm"] = "qwen-plus"
+                config["deep_think_llm"] = "qwen-turbo"  # 也使用快速模型保持一致
             elif llm_provider == "deepseek":
                 config["quick_think_llm"] = "deepseek-chat"  # DeepSeek只有一个模型
                 config["deep_think_llm"] = "deepseek-chat"
