@@ -6,9 +6,6 @@ port = 8501
 # 禁用浏览器自动打开
 headless = true
 
-# 禁用使用统计收集
-gatherUsageStats = false
-
 # 设置文件监视器类型（减少资源占用）
 fileWatcherType = "none"
 
@@ -16,9 +13,6 @@ fileWatcherType = "none"
 runOnSave = false
 
 [browser]
-# 禁用使用统计收集
-gatherUsageStats = false
-
 # 设置服务器地址显示
 serverAddress = "0.0.0.0"
 serverPort = 8501

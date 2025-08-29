@@ -310,7 +310,7 @@ def main():
         margin-left: 0px !important;
         margin-right: 0px !important;
         max-width: none !important;
-        width: calc(100% - 16px) !important;
+        width: auto !important;
     }
 
     /* 确保内容不被滚动条遮挡 */
@@ -398,22 +398,20 @@ def main():
         margin-right: 0px !important;
     }
 
-    /* 特别处理列容器 */
-    div[data-testid="column"],
-    .css-1d391kg,
-    .css-1r6slb0,
-    .css-12oz5g7,
-    .css-1lcbmhc {
-        padding-left: 8px !important;
-        padding-right: 8px !important;
+    /* 确保列布局正常工作 - 修复为Streamlit列容器的优化样式 */
+    div[data-testid="column"] {
+        padding-left: 4px !important;
+        padding-right: 4px !important;
         margin-left: 0px !important;
         margin-right: 0px !important;
+        width: auto !important;
+        flex-shrink: 0 !important;
     }
 
-    /* 强制设置容器宽度 */
+    /* 强制设置容器宽度 - 移除固定宽度限制 */
     .main .block-container {
-        width: calc(100vw - 276px) !important;
-        max-width: calc(100vw - 276px) !important;
+        width: auto !important;
+        max-width: none !important;
     }
 
     /* 优化使用指南区域的样式 */
