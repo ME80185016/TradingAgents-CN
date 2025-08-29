@@ -297,6 +297,11 @@ class AsyncProgressTracker:
     
     def update_progress(self, message: str, step: Optional[int] = None):
         """更新进度状态"""
+        # 安全处理message参数，确保是字符串类型
+        if not isinstance(message, str):
+            logger.warning(f"📊 [异步进度] update_progress收到非字符串message: {type(message)}, 内容: {message}")
+            message = str(message)  # 转换为字符串
+        
         current_time = time.time()
         elapsed_time = current_time - self.start_time
 
@@ -362,6 +367,12 @@ class AsyncProgressTracker:
     
     def _detect_step_from_message(self, message: str) -> Optional[int]:
         """根据消息内容智能检测当前步骤"""
+        # 安全处理message参数，确保是字符串类型
+        if not isinstance(message, str):
+            logger.warning(f"📊 [异步进度] _detect_step_from_message收到非字符串参数: {type(message)}, 内容: {message}")
+            # 如果是字典或其他对象，转换为字符串
+            message = str(message)
+        
         message_lower = message.lower()
 
         # 开始分析阶段 - 只匹配最初的开始消息
@@ -547,6 +558,11 @@ class AsyncProgressTracker:
     
     def mark_completed(self, message: str = "分析完成", results: Any = None):
         """标记分析完成"""
+        # 确保message是字符串类型
+        if not isinstance(message, str):
+            logger.warning(f"📊 [异步进度] mark_completed收到非字符串message: {type(message)}, 内容: {message}")
+            message = "分析完成"  # 使用默认消息
+        
         self.update_progress(message)
         self.progress_data['status'] = 'completed'
         self.progress_data['progress_percentage'] = 100.0

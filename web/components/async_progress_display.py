@@ -232,17 +232,36 @@ def display_static_progress_with_controls(analysis_id: str, show_refresh_control
     显示静态进度，可控制是否显示刷新控件和查看报告按钮
     """
     import streamlit as st
+    import time
     from web.utils.async_progress_tracker import get_progress_by_id
 
     # 添加全局显示锁，防止同一个analysis_id的进度被重复显示
     display_lock_key = f"progress_display_lock_{analysis_id}"
+    
+    # 首先检查并清理过期的锁（防止由于异常退出导致的锁没有被清理）
+    lock_timestamp_key = f"progress_lock_time_{analysis_id}"
+    current_time = time.time()
+    last_lock_time = st.session_state.get(lock_timestamp_key, 0)
+    
+    # 如果锁存在超过30秒，认为是废弃的锁，强制清理
+    if st.session_state.get(display_lock_key, False) and (current_time - last_lock_time > 30):
+        logger.info(f"📊 [显示锁] 检测到过期锁，强制清理: {analysis_id}")
+        if display_lock_key in st.session_state:
+            del st.session_state[display_lock_key]
+        if lock_timestamp_key in st.session_state:
+            del st.session_state[lock_timestamp_key]
+    
+    # 检查是否已经在其他地方显示这个分析ID的进度
     if st.session_state.get(display_lock_key, False):
         # 如果已经在显示，直接返回
         logger.debug(f"📊 [显示锁定] 跳过重复显示: {analysis_id}")
+        # 返回一个简单的状态提示，不重复渲染整个组件
+        st.info(f"🔄 进度已在上方显示: {analysis_id}")
         return False
     
-    # 设置显示锁
+    # 设置显示锁和时间戳
     st.session_state[display_lock_key] = True
+    st.session_state[lock_timestamp_key] = current_time
     
     try:
         # 显示进度区域标题
@@ -418,3 +437,6 @@ def display_static_progress_with_controls(analysis_id: str, show_refresh_control
         # 无论成功还是失败，都要释放显示锁
         if display_lock_key in st.session_state:
             del st.session_state[display_lock_key]
+        lock_timestamp_key = f"progress_lock_time_{analysis_id}"
+        if lock_timestamp_key in st.session_state:
+            del st.session_state[lock_timestamp_key]
