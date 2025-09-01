@@ -291,44 +291,34 @@ def render_detailed_analysis(state):
 
     /* 单个标签页样式 */
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        padding: 8px 16px;
-        background-color: #ffffff;
+        height: 60px;
+        white-space: nowrap;
+        background-color: white;
         border-radius: 8px;
-        border: 1px solid #e1e5e9;
         color: #495057;
         font-weight: 500;
-        transition: all 0.3s ease;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        padding: 12px 20px;
+        transition: all 0.2s ease;
+        border: 1px solid #dee2e6;
     }
 
-    /* 标签页悬停效果 */
+    /* 悬停效果 */
     .stTabs [data-baseweb="tab"]:hover {
-        background-color: #e3f2fd;
-        border-color: #2196f3;
+        background-color: #f8f9fa;
+        border-color: #adb5bd;
         transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(33,150,243,0.2);
     }
 
     /* 选中的标签页样式 */
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        color: white !important;
         border-color: #667eea !important;
-        box-shadow: 0 4px 12px rgba(102,126,234,0.3) !important;
+        color: white !important;
         transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
     }
 
-    /* 标签页内容区域 */
-    .stTabs [data-baseweb="tab-panel"] {
-        padding: 20px;
-        background-color: #ffffff;
-        border-radius: 10px;
-        border: 1px solid #e1e5e9;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    /* 标签页文字样式 */
+    /* 标签页内的文字样式 */
     .stTabs [data-baseweb="tab"] p {
         margin: 0;
         font-size: 14px;
@@ -396,29 +386,22 @@ def render_detailed_analysis(state):
             'icon': '📋',
             'description': '具体投资策略、仓位管理建议'
         },
-        # 添加团队决策报告模块
         {
             'key': 'investment_debate_state',
-            'title': '🔬 研究团队决策',
-            'icon': '🔬',
-            'description': '多头/空头研究员辩论分析，研究经理综合决策'
-        },
-        {
-            'key': 'trader_investment_plan',
-            'title': '💼 交易团队计划',
-            'icon': '💼',
-            'description': '专业交易员制定的具体交易执行计划'
+            'title': '🎯 团队决策',
+            'icon': '🎯',
+            'description': '多头空头研究员辩论与最终决策'
         },
         {
             'key': 'risk_debate_state',
-            'title': '⚖️ 风险管理团队',
-            'icon': '⚖️',
-            'description': '激进/保守/中性分析师风险评估，投资组合经理最终决策'
+            'title': '🛡️ 风险管理',
+            'icon': '🛡️',
+            'description': '风险管理团队的多维度风险评估'
         },
         {
-            'key': 'final_trade_decision',
-            'title': '🎯 最终交易决策',
-            'icon': '🎯',
+            'key': 'final_decision',
+            'title': '🏆 最终决策',
+            'icon': '🏆',
             'description': '综合所有团队分析后的最终投资决策'
         }
     ]
@@ -442,33 +425,92 @@ def render_detailed_analysis(state):
         render_analysis_placeholder()
         return
 
-    # 只为有数据的模块创建标签页 - 移除重复图标
-    tabs = st.tabs([module['title'] for module in available_modules])
+    # 添加DOM操作保护，用于防止基本面分析等模块的DOM冲突
+    try:
+        # 只为有数据的模块创建标签页 - 移除重复图标
+        tabs = st.tabs([module['title'] for module in available_modules])
 
-    for i, (tab, module) in enumerate(zip(tabs, available_modules)):
-        with tab:
-            # 在内容区域显示图标和描述
-            st.markdown(f"## {module['icon']} {module['title']}")
-            st.markdown(f"*{module['description']}*")
-            st.markdown("---")
+        for i, (tab, module) in enumerate(zip(tabs, available_modules)):
+            try:
+                with tab:
+                    # 在内容区域显示图标和描述
+                    st.markdown(f"## {module['icon']} {module['title']}")
+                    st.markdown(f"*{module['description']}*")
+                    st.markdown("---")
 
-            # 格式化显示内容
-            content = state[module['key']]
-            if isinstance(content, str):
-                st.markdown(content)
-            elif isinstance(content, dict):
-                # 特殊处理团队决策报告的字典结构
-                if module['key'] == 'investment_debate_state':
-                    render_investment_debate_content(content)
-                elif module['key'] == 'risk_debate_state':
-                    render_risk_debate_content(content)
+                    # 格式化显示内容 - 为基本面分析添加特别的DOM保护
+                    content = state[module['key']]
+                    
+                    # 特别处理基本面分析模块，添加DOM操作保护
+                    if module['key'] == 'fundamentals_report':
+                        try:
+                            if isinstance(content, str):
+                                # 分段显示，避免单次渲染过大内容导致DOM冲突
+                                content_lines = content.split('\n')
+                                chunk_size = 50  # 每次渲染50行
+                                for i in range(0, len(content_lines), chunk_size):
+                                    chunk = '\n'.join(content_lines[i:i+chunk_size])
+                                    if chunk.strip():
+                                        st.markdown(chunk)
+                            elif isinstance(content, dict):
+                                # 逐个渲染字典内容，减少DOM压力
+                                for key, value in content.items():
+                                    try:
+                                        st.subheader(key.replace('_', ' ').title())
+                                        st.write(value)
+                                    except Exception as e:
+                                        logger.warning(f"💰 [基本面分析] 字段渲染跳过 {key}: {e}")
+                                        continue
+                            else:
+                                st.write(content)
+                        except Exception as e:
+                            logger.error(f"💰 [基本面分析] DOM渲染失败: {e}")
+                            st.error("💰 基本面分析数据渲染遇到问题，请刷新页面重试")
+                            
+                    elif isinstance(content, str):
+                        st.markdown(content)
+                    elif isinstance(content, dict):
+                        # 特殊处理团队决策报告的字典结构
+                        if module['key'] == 'investment_debate_state':
+                            render_investment_debate_content(content)
+                        elif module['key'] == 'risk_debate_state':
+                            render_risk_debate_content(content)
+                        else:
+                            # 普通字典格式化显示
+                            for key, value in content.items():
+                                st.subheader(key.replace('_', ' ').title())
+                                st.write(value)
+                    else:
+                        st.write(content)
+                        
+            except Exception as e:
+                logger.error(f"📊 [标签页渲染] {module['title']} 渲染失败: {e}")
+                # 显示错误但不中断整个页面
+                with tab:
+                    st.error(f"❌ {module['title']} 渲染遇到问题: {str(e)}")
+                    st.info("💡 建议：刷新页面或等待几秒后重试")
+                continue
+                
+    except Exception as e:
+        logger.error(f"📊 [DOM错误] 标签页整体渲染失败: {e}")
+        # 降级到简单列表显示
+        st.warning("⚠️ 标签页显示遇到问题，切换到简单模式")
+        for module in available_modules:
+            with st.expander(f"{module['icon']} {module['title']}", expanded=False):
+                content = state[module['key']]
+                if isinstance(content, str):
+                    st.markdown(content)
+                elif isinstance(content, dict):
+                    if module['key'] == 'investment_debate_state':
+                        render_investment_debate_content(content)
+                    elif module['key'] == 'risk_debate_state':
+                        render_risk_debate_content(content)
+                    else:
+                        for key, value in content.items():
+                            st.subheader(key.replace('_', ' ').title())
+                            st.write(value)
                 else:
-                    # 普通字典格式化显示
-                    for key, value in content.items():
-                        st.subheader(key.replace('_', ' ').title())
-                        st.write(value)
-            else:
-                st.write(content)
+                    st.write(content)
 
 def render_investment_debate_content(content):
     """渲染研究团队决策内容"""
