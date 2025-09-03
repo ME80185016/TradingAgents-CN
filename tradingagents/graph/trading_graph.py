@@ -235,8 +235,12 @@ class TradingAgentsGraph:
         # Create tool nodes
         self.tool_nodes = self._create_tool_nodes()
 
-        # Initialize components
-        self.conditional_logic = ConditionalLogic()
+        # 初始化组件
+        # 与配置中的轮次参数传递给ConditionalLogic
+        max_debate_rounds = self.config.get('max_debate_rounds', 1)
+        max_risk_discuss_rounds = self.config.get('max_risk_discuss_rounds', 1)
+        self.conditional_logic = ConditionalLogic(max_debate_rounds, max_risk_discuss_rounds)
+        
         self.graph_setup = GraphSetup(
             self.quick_thinking_llm,
             self.deep_thinking_llm,

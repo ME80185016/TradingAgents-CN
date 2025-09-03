@@ -250,4 +250,15 @@ class GraphSetup:
         workflow.add_edge("Risk Judge", END)
 
         # Compile and return
-        return workflow.compile()
+        # 注意：尝试通过config配置递归限制而不是直接在compile中设置
+        if 'recursion_limit' in self.config:
+            try:
+                # 对于支持recursion_limit参数的新版LangGraph
+                return workflow.compile(recursion_limit=self.config['recursion_limit'])
+            except TypeError:
+                # 对于不支持recursion_limit参数的旧版LangGraph
+                logger.warning(f"LangGraph版本不支持直接设置recursion_limit参数")
+                return workflow.compile()
+        else:
+            # 默认编译
+            return workflow.compile()

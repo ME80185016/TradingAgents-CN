@@ -357,6 +357,9 @@ def run_stock_analysis(stock_symbol, analysis_date, analysts, research_depth, ll
             logger.info(f"🔧 [自定义OpenAI] 使用模型: {llm_model}")
             logger.info(f"🔧 [自定义OpenAI] API端点: {custom_base_url}")
 
+        # 添加递归限制配置
+        config["recursion_limit"] = 200  # 设置较高的递归限制，解决递归错误
+
         # 修复路径问题 - 优先使用环境变量配置
         # 数据目录：优先使用环境变量，否则使用默认路径
         if not config.get("data_dir") or config["data_dir"] == "./data":
