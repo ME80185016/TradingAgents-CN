@@ -242,7 +242,7 @@ def render_sidebar():
         if llm_provider == "dashscope":
             dashscope_options = [
                 "qwen-turbo", 
-                "qwen-plus-latest", 
+                "qwen-plus", 
                 "qwen-max",
                 "qwen-long",
                 "qwen-vl-plus",
@@ -252,7 +252,7 @@ def render_sidebar():
             ]
 
             # 获取当前选择的索引
-            current_index = 1  # 默认选择qwen-plus-latest
+            current_index = 1  # 默认选择qwen-plus
             if st.session_state.llm_model in dashscope_options:
                 current_index = dashscope_options.index(st.session_state.llm_model)
 
@@ -262,7 +262,7 @@ def render_sidebar():
                 index=current_index,
                 format_func=lambda x: {
                     "qwen-turbo": "Turbo - 快速响应",
-                    "qwen-plus-latest": "Plus - 平衡性能",
+                    "qwen-plus": "Plus - 平衡性能",
                     "qwen-max": "Max - 最强性能",
                     "qwen-long": "Long - 长文本处理",
                     "qwen-vl-plus": "VL Plus - 视觉理解",
