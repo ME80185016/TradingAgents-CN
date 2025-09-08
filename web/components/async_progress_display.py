@@ -77,6 +77,12 @@ class AsyncProgressDisplay:
     
     def _render_progress(self, progress_data: Dict[str, Any]):
         """渲染进度显示"""
+        # 使用DOM锁保护所有更新操作
+        if self.dom_lock:
+            logger.debug(f"📊 [DOM保护] 跳过更新，DOM操作正在进行中")
+            return
+            
+        self.dom_lock = True
         try:
             # 基本信息
             current_step = progress_data.get('current_step', 0)
@@ -84,8 +90,11 @@ class AsyncProgressDisplay:
             progress_percentage = progress_data.get('progress_percentage', 0.0)
             status = progress_data.get('status', 'running')
             
-            # 更新进度条
-            self.progress_bar.progress(min(progress_percentage / 100, 1.0))
+            # 更新进度条 - 添加异常保护
+            try:
+                self.progress_bar.progress(min(progress_percentage / 100, 1.0))
+            except Exception as e:
+                logger.warning(f"📊 [DOM保护] 进度条更新跳过: {e}")
             
             # 状态信息
             step_name = progress_data.get('current_step_name', '未知')
@@ -99,14 +108,20 @@ class AsyncProgressDisplay:
                 'failed': '❌'
             }.get(status, '🔄')
             
-            # 显示当前状态
-            self.status_text.info(f"{status_icon} **当前状态**: {last_message}")
+            # 显示当前状态 - 添加异常保护
+            try:
+                self.status_text.info(f"{status_icon} **当前状态**: {last_message}")
+            except Exception as e:
+                logger.warning(f"📊 [DOM保护] 状态文本更新跳过: {e}")
             
-            # 显示步骤信息
-            if status == 'failed':
-                self.step_info.error(f"❌ **分析失败**: {last_message}")
-            elif status == 'completed':
-                self.step_info.success(f"🎉 **分析完成**: 所有步骤已完成")
+            # 显示步骤信息 - 添加异常保护
+            try:
+                if status == 'failed':
+                    self.step_info.error(f"❌ **分析失败**: {last_message}")
+                elif status == 'completed':
+                    self.step_info.success(f"🎉 **分析完成**: 所有步骤已完成")
+            except Exception as e:
+                logger.warning(f"📊 [DOM保护] 步骤信息更新跳过: {e}")
 
                 # 添加查看报告按钮
                 with self.step_info:
@@ -174,14 +189,14 @@ class AsyncProgressDisplay:
                 logger.warning(f"📊 [DOM保护] 刷新按钮更新跳过: {e}")
                 
         except Exception as e:
-            logger.error(f"📊 [异步显示] 渲染失败: {e}")
+            logger.error(f"📊 [DOM错误] 渲染进度失败: {e}")
             try:
                 self.status_text.error(f"❌ 显示更新失败: {str(e)}")
             except:
                 # 如果连错误显示都失败，只记录日志
                 logger.error(f"📊 [DOM严重错误] 无法显示错误信息: {e}")
         finally:
-            # 确保释放DOM锁
+            # 确保DOM锁总是被释放
             self.dom_lock = False
 
 def create_async_progress_display(container, analysis_id: str, refresh_interval: float = 1.0) -> AsyncProgressDisplay:

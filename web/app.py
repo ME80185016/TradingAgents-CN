@@ -109,6 +109,21 @@ st.markdown("""
         padding-top: 0 !important;
     }
     
+    /* DOM稳定性优化 */
+    * {
+        transition: none !important;
+        animation: none !important;
+    }
+    
+    /* 防止Streamlit组件重复渲染冲突 */
+    .stProgress > div {
+        transition: none !important;
+    }
+    
+    .stAlert > div {
+        transition: none !important;
+    }
+    
     /* 应用样式 */
     .main-header {
         background: linear-gradient(90deg, #1f77b4, #ff7f0e);
