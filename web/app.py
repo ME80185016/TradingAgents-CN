@@ -124,6 +124,68 @@ st.markdown("""
         transition: none !important;
     }
     
+    /* 强制禁用所有Streamlit内部动画和DOM操作 */
+    .element-container {
+        transition: none !important;
+        animation: none !important;
+    }
+    
+    .stTabs {
+        transition: none !important;
+    }
+    
+    /* 防止DOM重复操作 */
+    [data-testid] {
+        transition: none !important;
+        animation: none !important;
+    }
+</style>
+
+<script>
+// DOM操作保护机制 - 紧急修复
+(function() {
+    // 重写原生DOM方法，添加错误保护
+    const originalRemoveChild = Node.prototype.removeChild;
+    const originalAppendChild = Node.prototype.appendChild;
+    const originalInsertBefore = Node.prototype.insertBefore;
+    
+    Node.prototype.removeChild = function(child) {
+        try {
+            if (this.contains(child)) {
+                return originalRemoveChild.call(this, child);
+            } else {
+                console.warn('[DOM保护] 尝试删除不存在的子节点，已跳过');
+                return child;
+            }
+        } catch (e) {
+            console.warn('[DOM保护] removeChild操作失败，已跳过:', e.message);
+            return child;
+        }
+    };
+    
+    Node.prototype.appendChild = function(child) {
+        try {
+            return originalAppendChild.call(this, child);
+        } catch (e) {
+            console.warn('[DOM保护] appendChild操作失败，已跳过:', e.message);
+            return child;
+        }
+    };
+    
+    Node.prototype.insertBefore = function(newNode, referenceNode) {
+        try {
+            return originalInsertBefore.call(this, newNode, referenceNode);
+        } catch (e) {
+            console.warn('[DOM保护] insertBefore操作失败，已跳过:', e.message);
+            return newNode;
+        }
+    };
+    
+    console.log('[DOM保护] DOM操作保护已启用');
+})();
+</script>
+
+<style>
     /* 应用样式 */
     .main-header {
         background: linear-gradient(90deg, #1f77b4, #ff7f0e);
@@ -900,7 +962,13 @@ def main():
             with progress_col1:
                 st.markdown("### 📊 分析进度")
 
-            is_completed = display_unified_progress(current_analysis_id, show_refresh_controls=is_running)
+            # 添加DOM操作保护
+            try:
+                is_completed = display_unified_progress(current_analysis_id, show_refresh_controls=is_running)
+            except Exception as e:
+                logger.error(f"🔄 [DOM保护] 统一进度显示失败: {e}")
+                st.error("⚠️ 进度显示暂时不可用，请刷新页面重试")
+                is_completed = False
 
             # 如果分析正在进行，显示提示信息（不添加额外的自动刷新）
             if is_running:
