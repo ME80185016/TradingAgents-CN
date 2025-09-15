@@ -243,7 +243,7 @@ def render_sidebar():
             dashscope_options = [
                 "qwen-turbo", 
                 "qwen-plus", 
-                "qwen-max",
+                "qwen-plus-2025-09-11",
                 "qwen-long",
                 "qwen-vl-plus",
                 "qwen-vl-max",
@@ -263,7 +263,7 @@ def render_sidebar():
                 format_func=lambda x: {
                     "qwen-turbo": "Turbo - 快速响应",
                     "qwen-plus": "Plus - 平衡性能",
-                    "qwen-max": "Max - 最强性能",
+                    "qwen-plus-2025-09-11": "Max - 最强性能",
                     "qwen-long": "Long - 长文本处理",
                     "qwen-vl-plus": "VL Plus - 视觉理解",
                     "qwen-vl-max": "VL Max - 高级视觉",
