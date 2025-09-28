@@ -531,6 +531,152 @@ def run_stock_analysis(stock_symbol, analysis_date, analysts, research_depth, ll
         return results
 
     except Exception as e:
+        error_text = str(e)
+        quota_keywords = [
+            "AllocationQuota.FreeTierOnly",
+            "free tier",
+            "403",
+            "PermissionDeniedError"
+        ]
+
+        should_try_fallback = (
+            llm_provider == "dashscope" and any(k.lower() in error_text.lower() for k in quota_keywords)
+        )
+
+        if should_try_fallback:
+            try:
+                fallback_provider = None
+                fallback_model = None
+
+                # Prefer DeepSeek if available
+                deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+                if deepseek_key:
+                    fallback_provider = "deepseek"
+                    fallback_model = "deepseek-chat"
+
+                # Else try Google
+                if fallback_provider is None:
+                    google_key = os.getenv("GOOGLE_API_KEY")
+                    if google_key:
+                        fallback_provider = "google"
+                        # choose a sensible default per research_depth
+                        if research_depth == 1:
+                            fallback_model = "gemini-2.5-flash-lite-preview-06-17"
+                        elif research_depth == 2:
+                            fallback_model = "gemini-2.0-flash"
+                        else:
+                            fallback_model = "gemini-2.5-flash"
+
+                if fallback_provider:
+                    update_progress(
+                        f"⚠️ DashScope额度受限，自动切换到{fallback_provider} 再试一次..."
+                    )
+
+                    # 复用上面的配置构建流程，但替换 provider/model
+                    from tradingagents.graph.trading_graph import TradingAgentsGraph
+                    from tradingagents.default_config import DEFAULT_CONFIG
+
+                    config = DEFAULT_CONFIG.copy()
+                    config["llm_provider"] = fallback_provider
+                    config["deep_think_llm"] = fallback_model
+                    config["quick_think_llm"] = fallback_model
+
+                    # 套用与主路径一致的后端URL选择
+                    if fallback_provider == "deepseek":
+                        config["backend_url"] = "https://api.deepseek.com"
+                    elif fallback_provider == "google":
+                        config["backend_url"] = "https://api.openai.com/v1"
+                    elif fallback_provider == "openai":
+                        config["backend_url"] = "https://api.openai.com/v1"
+
+                    # 目录配置与环境变量解析（复用主路径逻辑的简化版）
+                    if not config.get("data_dir") or config["data_dir"] == "./data":
+                        env_data_dir = os.getenv("TRADINGAGENTS_DATA_DIR")
+                        config["data_dir"] = (
+                            str(project_root / env_data_dir)
+                            if env_data_dir and not os.path.isabs(env_data_dir)
+                            else (env_data_dir or str(project_root / "data"))
+                        )
+                    if not config.get("results_dir") or config["results_dir"] == "./results":
+                        env_results_dir = os.getenv("TRADINGAGENTS_RESULTS_DIR")
+                        config["results_dir"] = (
+                            str(project_root / env_results_dir)
+                            if env_results_dir and not os.path.isabs(env_results_dir)
+                            else (env_results_dir or str(project_root / "results"))
+                        )
+                    if not config.get("data_cache_dir"):
+                        env_cache_dir = os.getenv("TRADINGAGENTS_CACHE_DIR")
+                        config["data_cache_dir"] = (
+                            str(project_root / env_cache_dir)
+                            if env_cache_dir and not os.path.isabs(env_cache_dir)
+                            else (env_cache_dir or str(project_root / "tradingagents" / "dataflows" / "data_cache"))
+                        )
+
+                    os.makedirs(config["data_dir"], exist_ok=True)
+                    os.makedirs(config["results_dir"], exist_ok=True)
+                    os.makedirs(config["data_cache_dir"], exist_ok=True)
+
+                    # 初始化并重试一次
+                    graph = TradingAgentsGraph(analysts, config=config, debug=False)
+                    state, decision = graph.propagate(formatted_symbol, analysis_date)
+
+                    # 成功则按新provider回填打包
+                    if TOKEN_TRACKING_ENABLED:
+                        estimated_input = 2000 * len(analysts)
+                        estimated_output = 1000 * len(analysts)
+                        estimated_cost = token_tracker.estimate_cost(
+                            fallback_provider, fallback_model, estimated_input, estimated_output
+                        )
+                        update_progress(f"💰 预估分析成本(切换{fallback_provider}): ¥{estimated_cost:.4f}")
+
+                    results = {
+                        'stock_symbol': stock_symbol,
+                        'analysis_date': analysis_date,
+                        'analysts': analysts,
+                        'research_depth': research_depth,
+                        'llm_provider': fallback_provider,
+                        'llm_model': fallback_model,
+                        'state': state,
+                        'decision': decision,
+                        'success': True,
+                        'error': None,
+                        'session_id': session_id if TOKEN_TRACKING_ENABLED else None
+                    }
+
+                    analysis_duration = time.time() - analysis_start_time
+                    total_cost = 0.0
+                    if TOKEN_TRACKING_ENABLED:
+                        try:
+                            total_cost = token_tracker.get_session_cost(session_id)
+                        except:
+                            pass
+
+                    logger_manager.log_analysis_complete(
+                        logger, stock_symbol, "comprehensive_analysis", session_id,
+                        analysis_duration, total_cost
+                    )
+
+                    logger.info(
+                        f"✅ [分析完成] 已使用备用提供商 {fallback_provider}",
+                        extra={
+                            'stock_symbol': stock_symbol,
+                            'session_id': session_id,
+                            'duration': analysis_duration,
+                            'total_cost': total_cost,
+                            'analysts_used': analysts,
+                            'success': True,
+                            'event_type': 'web_analysis_complete'
+                        }
+                    )
+
+                    update_progress("✅ 使用备用提供商完成分析！")
+                    return results
+
+            except Exception as fallback_err:
+                logger.error(f"❌ 备用提供商重试失败: {fallback_err}")
+                # 继续走原有错误返回
+
+        # 原有错误处理路径
         # 记录分析失败的详细日志
         analysis_duration = time.time() - analysis_start_time
 

@@ -5,6 +5,9 @@ import json
 from tradingagents.utils.logging_init import get_logger
 logger = get_logger("default")
 
+# 导入安全调用工具
+from tradingagents.utils.dashscope_error_handler import safe_llm_invoke
+
 
 def create_neutral_debator(llm):
     def neutral_node(state) -> dict:
@@ -36,9 +39,9 @@ def create_neutral_debator(llm):
 
 通过批判性地分析双方来积极参与，解决激进和保守论点中的弱点，倡导更平衡的方法。挑战他们的每个观点，说明为什么适度风险策略可能提供两全其美的效果，既提供增长潜力又防范极端波动。专注于辩论而不是简单地呈现数据，旨在表明平衡的观点可以带来最可靠的结果。请用中文以对话方式输出，就像您在说话一样，不使用任何特殊格式。"""
 
-        response = llm.invoke(prompt)
-
-        argument = f"Neutral Analyst: {response.content}"
+        # 使用安全的LLM调用
+        response_content = safe_llm_invoke(llm, prompt, role="neutral", max_retries=3)
+        argument = f"Neutral Analyst: {response_content}"
 
         new_risk_debate_state = {
             "history": history + "\n" + argument,

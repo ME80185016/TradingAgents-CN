@@ -5,6 +5,9 @@ import json
 from tradingagents.utils.logging_init import get_logger
 logger = get_logger("default")
 
+# 导入安全调用工具
+from tradingagents.utils.dashscope_error_handler import safe_llm_invoke
+
 
 def create_risky_debator(llm):
     def risky_node(state) -> dict:
@@ -36,9 +39,9 @@ def create_risky_debator(llm):
 
 积极参与，解决提出的任何具体担忧，反驳他们逻辑中的弱点，并断言承担风险的好处以超越市场常规。专注于辩论和说服，而不仅仅是呈现数据。挑战每个反驳点，强调为什么高风险方法是最优的。请用中文以对话方式输出，就像您在说话一样，不使用任何特殊格式。"""
 
-        response = llm.invoke(prompt)
-
-        argument = f"Risky Analyst: {response.content}"
+        # 使用安全的LLM调用
+        response_content = safe_llm_invoke(llm, prompt, role="aggressive", max_retries=3)
+        argument = f"Risky Analyst: {response_content}"
 
         new_risk_debate_state = {
             "history": history + "\n" + argument,
