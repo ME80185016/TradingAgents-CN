@@ -29,7 +29,8 @@ import argparse
 import sys
 import os
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
+from dataclasses import dataclass
 
 try:
     import fitz  # PyMuPDF
@@ -39,7 +40,15 @@ except Exception as e:
     raise
 
 
-def extract_page_markdown(page: "fitz.Page") -> str:
+@dataclass
+class MergeConfig:
+    same_column_tolerance: float = 12.0  # 同列 x 中心容差（pt）
+    vertical_gap_limit: float = 60.0     # 相邻行允许最大垂直间距（pt）的基础值
+    vertical_gap_factor: float = 3.0     # 允许垂直间距 = max(vertical_gap_limit, factor * 平均行高)
+    min_vertical_run: int = 3            # 触发竖排合并的最小连续行数
+
+
+def extract_page_markdown(page: "fitz.Page", cfg: MergeConfig) -> str:
     """
     从单页提取 Markdown 文本。
     改进点：
@@ -81,9 +90,9 @@ def extract_page_markdown(page: "fitz.Page") -> str:
         if not group:
             return
         all_short = all(len(g[6]) <= 2 for g in group)
-        if len(group) >= 3 and all_short:
+        if len(group) >= cfg.min_vertical_run and all_short:
             xs = [g[1] for g in group]
-            if (max(xs) - min(xs)) <= 5.0:
+            if (max(xs) - min(xs)) <= cfg.same_column_tolerance:
                 group_sorted = sorted(group, key=lambda t: t[0])
                 text = "".join(g[6] for g in group_sorted)
                 x0 = min(g[2] for g in group_sorted)
@@ -103,8 +112,8 @@ def extract_page_markdown(page: "fitz.Page") -> str:
             group = [ln]
         else:
             avg_h = (group[-1][7] + ln[7]) / 2.0
-            same_col = abs(ln[1] - group[-1][1]) <= 5.0
-            near_vert = abs(ln[0] - group[-1][0]) <= max(40.0, 2.0 * max(1.0, avg_h))
+            same_col = abs(ln[1] - group[-1][1]) <= cfg.same_column_tolerance
+            near_vert = abs(ln[0] - group[-1][0]) <= max(cfg.vertical_gap_limit, cfg.vertical_gap_factor * max(1.0, avg_h))
             if same_col and near_vert:
                 group.append(ln)
             else:
@@ -184,14 +193,15 @@ def extract_page_markdown(page: "fitz.Page") -> str:
     return "\n".join(out_lines).strip() + "\n\n"
 
 
-def convert_pdf_to_markdown(input_pdf: Path) -> str:
+def convert_pdf_to_markdown(input_pdf: Path, cfg: Optional[MergeConfig] = None) -> str:
     """
     将单个 PDF 转为 Markdown 字符串。
     """
+    cfg = cfg or MergeConfig()
     doc = fitz.open(input_pdf.as_posix())
     parts: List[str] = []
     for page in doc:
-        parts.append(extract_page_markdown(page))
+        parts.append(extract_page_markdown(page, cfg))
     doc.close()
     content = "".join(parts)
     # 简单清理：压缩多余空行
@@ -240,6 +250,11 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="输出目录（默认与输入 PDF 同目录）")
     parser.add_argument("-r", "--recursive", action="store_true", help="目录模式递归查找 PDF")
     parser.add_argument("--overwrite", action="store_true", help="若输出文件已存在则覆盖")
+    # 竖排文本合并参数
+    parser.add_argument("--same-col-tol", type=float, default=12.0, help="同列判定的 x 容差（pt）")
+    parser.add_argument("--vert-gap", type=float, default=60.0, help="相邻行允许的基础垂直间距（pt）")
+    parser.add_argument("--vert-gap-factor", type=float, default=3.0, help="垂直间距系数（与平均行高相乘）")
+    parser.add_argument("--min-vertical-run", type=int, default=3, help="触发竖排合并的最小连续行数")
 
     args = parser.parse_args(argv)
     input_path = Path(args.input).expanduser().resolve()
@@ -256,7 +271,13 @@ def main(argv: List[str] | None = None) -> int:
             if input_path.suffix.lower() != ".pdf":
                 print(f"错误：输入文件不是 PDF：{input_path}")
                 return 2
-            md = convert_pdf_to_markdown(input_path)
+            cfg = MergeConfig(
+                same_column_tolerance=args.same_col_tol,
+                vertical_gap_limit=args.vert_gap,
+                vertical_gap_factor=args.vert_gap_factor,
+                min_vertical_run=args.min_vertical_run,
+            )
+            md = convert_pdf_to_markdown(input_pdf=input_path, cfg=cfg)
             out = write_output(md, input_path, output_dir, args.overwrite)
             converted.append(out)
         else:
@@ -266,7 +287,13 @@ def main(argv: List[str] | None = None) -> int:
                 return 1
             for pdf in pdfs:
                 try:
-                    md = convert_pdf_to_markdown(pdf)
+                    cfg = MergeConfig(
+                        same_column_tolerance=args.same_col_tol,
+                        vertical_gap_limit=args.vert_gap,
+                        vertical_gap_factor=args.vert_gap_factor,
+                        min_vertical_run=args.min_vertical_run,
+                    )
+                    md = convert_pdf_to_markdown(pdf, cfg=cfg)
                     out = write_output(md, pdf, output_dir, args.overwrite)
                     converted.append(out)
                 except Exception as per_file_err:
